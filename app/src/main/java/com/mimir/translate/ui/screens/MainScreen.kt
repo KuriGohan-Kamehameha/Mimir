@@ -3,6 +3,7 @@ package com.mimir.translate.ui.screens
 import android.app.Activity
 import android.content.Intent
 import android.graphics.Bitmap
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -40,7 +41,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
@@ -63,10 +66,15 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import java.util.concurrent.atomic.AtomicReference
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 // NASA Rule 2: all loops must have fixed upper bounds
 private const val MAX_AUTO_CYCLES = 10_000
+private val LAST_UPDATED_TIME_FORMATTER: DateTimeFormatter =
+    DateTimeFormatter.ofPattern("HH:mm:ss", Locale.getDefault())
 
 /** NASA Rule 4: extracted text change detection as a top-level pure function. */
 private fun isSignificantChange(oldText: String, newText: String): Boolean {
@@ -164,6 +172,7 @@ fun MainScreen(
     val isAutoMode = aiModel == AppSettings.MODEL_MLKIT_OFFLINE_AUTO
     var autoJob by remember { mutableStateOf<Job?>(null) }
     var lastOcrText by remember { mutableStateOf<String?>(null) }
+    var lastSuccessAtMs by remember { mutableStateOf<Long?>(null) }
     
     // Lock for thread-safe auto mode job management
     val autoJobLock = remember { Object() }
@@ -213,6 +222,7 @@ fun MainScreen(
                 onDictionaryStateChange(CaptureState.DictionarySuccess(
                     AnalysisResult(originalText = recognizedText, words = words)
                 ))
+                lastSuccessAtMs = System.currentTimeMillis()
             } else {
                 onDictionaryStateChange(CaptureState.Error("No Japanese text found in screenshot"))
             }
@@ -240,7 +250,9 @@ fun MainScreen(
             )) {
                 is TranslateResult.Success -> onTranslateStateChange(
                     CaptureState.TranslateSuccess(TranslationResult(translation = result.text)),
-                )
+                ).also {
+                    lastSuccessAtMs = System.currentTimeMillis()
+                }
                 is TranslateResult.Error -> onTranslateStateChange(CaptureState.Error(result.message))
             }
         }
@@ -270,7 +282,9 @@ fun MainScreen(
             )) {
                 is TranslateResult.Success -> onTranslateStateChange(
                     CaptureState.TranslateSuccess(TranslationResult(translation = result.text)),
-                )
+                ).also {
+                    lastSuccessAtMs = System.currentTimeMillis()
+                }
                 is TranslateResult.Error -> onTranslateStateChange(CaptureState.Error(result.message))
             }
         }
@@ -340,15 +354,23 @@ fun MainScreen(
         },
         containerColor = MaterialTheme.colorScheme.background,
     ) { padding ->
+        val buttonIdleLabel = if (appMode == AppSettings.MODE_TRANSLATE) "Translate" else "Analyze"
+        val buttonBusyLabel = if (appMode == AppSettings.MODE_TRANSLATE) "Translating..." else "Analyzing..."
         Column(
             modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.SpaceBetween,
         ) {
             ModeToggle(currentMode = appMode, onModeChange = { settings.setAppMode(it) })
+            ActiveStatusStrip(
+                appMode = appMode,
+                aiModel = aiModel,
+                outputLanguage = outputLanguage,
+                lastSuccessAtMs = lastSuccessAtMs,
+            )
             CaptureStateContent(
                 captureState = captureState, appMode = appMode, aiModel = aiModel,
                 outputLanguage = outputLanguage, textSize = textSize,
-                modifier = Modifier.weight(1f).padding(top = 8.dp),
+                modifier = Modifier.weight(1f).padding(top = 4.dp),
             )
             CaptureButton(
                 isProcessing = captureState is CaptureState.Capturing
@@ -358,6 +380,8 @@ fun MainScreen(
                 modifier = Modifier.padding(bottom = 16.dp),
                 isAutoMode = isAutoMode,
                 onStopAuto = { stopAutoMode() },
+                idleLabel = buttonIdleLabel,
+                processingLabel = buttonBusyLabel,
             )
         }
     }
@@ -569,7 +593,62 @@ private fun ProcessingText(aiModel: Int, outputLanguage: String) {
 }
 
 @Composable
+private fun ActiveStatusStrip(
+    appMode: Int,
+    aiModel: Int,
+    outputLanguage: String,
+    lastSuccessAtMs: Long?,
+) {
+    val modeLabel = if (appMode == AppSettings.MODE_TRANSLATE) "Translate" else "JP Dictionary"
+    val engineLabel = when (aiModel) {
+        AppSettings.MODEL_MLKIT_OFFLINE -> "Offline"
+        AppSettings.MODEL_MLKIT_OFFLINE_AUTO -> "Offline Auto"
+        AppSettings.MODEL_GOOGLE_FREE -> "Google"
+        AppSettings.MODEL_OLLAMA -> "Ollama"
+        else -> "Offline"
+    }
+    val langLabel = AppSettings.languageDisplayName(outputLanguage)
+    val lastLabel = lastSuccessAtMs?.let {
+        val localTime = Instant.ofEpochMilli(it).atZone(ZoneId.systemDefault()).toLocalTime()
+        "Last: ${LAST_UPDATED_TIME_FORMATTER.format(localTime)}"
+    }
+
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        StatusPill(modeLabel)
+        StatusPill(engineLabel)
+        StatusPill(langLabel)
+        if (lastLabel != null) {
+            Text(
+                text = lastLabel,
+                fontSize = 11.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 2.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun StatusPill(label: String) {
+    Text(
+        text = label,
+        fontSize = 11.sp,
+        fontWeight = FontWeight.Medium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.clip(RoundedCornerShape(999.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .padding(horizontal = 10.dp, vertical = 5.dp),
+    )
+}
+
+@Composable
 private fun TranslateSuccessContent(translation: String, aiModel: Int, textSize: Int) {
+    val clipboardManager = LocalClipboardManager.current
+    val context = LocalContext.current
     val fontSize = when (textSize) {
         AppSettings.TEXT_SIZE_SMALL -> 14.sp
         AppSettings.TEXT_SIZE_LARGE -> 20.sp
@@ -578,10 +657,37 @@ private fun TranslateSuccessContent(translation: String, aiModel: Int, textSize:
     val isBlockMode = aiModel == AppSettings.MODEL_MLKIT_OFFLINE
         || aiModel == AppSettings.MODEL_MLKIT_OFFLINE_AUTO
         || aiModel == AppSettings.MODEL_GOOGLE_FREE
-    if (isBlockMode) {
-        BlockTranslationView(translation, fontSize)
-    } else {
-        Text(translation, fontSize = fontSize, color = MaterialTheme.colorScheme.onSurface, lineHeight = fontSize * 1.5)
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = "${translation.length} chars",
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                text = "Copy",
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant)
+                    .clickable {
+                        clipboardManager.setText(AnnotatedString(translation))
+                        Toast.makeText(context, "Translation copied", Toast.LENGTH_SHORT).show()
+                    }
+                    .padding(horizontal = 12.dp, vertical = 7.dp),
+            )
+        }
+        if (isBlockMode) {
+            BlockTranslationView(translation, fontSize)
+        } else {
+            Text(translation, fontSize = fontSize, color = MaterialTheme.colorScheme.onSurface, lineHeight = fontSize * 1.5)
+        }
     }
 }
 

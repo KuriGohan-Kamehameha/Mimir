@@ -130,7 +130,7 @@ fun HelpScreen(
             HelpDivider()
 
             Text(
-                text = "Based on ThorTranslate by magiobus (MIT License)",
+                text = "Based on open-source work by magiobus (MIT License)",
                 fontSize = 13.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 4.dp),

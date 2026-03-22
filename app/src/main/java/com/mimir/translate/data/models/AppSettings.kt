@@ -23,6 +23,9 @@ class AppSettings(context: Context) {
         private const val KEY_OLLAMA_MODEL = "ollama_model"
         private const val KEY_AUTO_MODE_REFRESH = "auto_mode_refresh"
         private const val KEY_THEME_MODE = "theme_mode"
+        private const val KEY_LAUNCH_BOTTOM_SCREEN = "launch_bottom_screen"
+        private const val KEY_LOCK_APP_TO_BOTTOM_SCREEN = "lock_app_to_bottom_screen"
+        private const val LEGACY_KEY_ENFORCE_BOTTOM_SCREEN = "enforce_bottom_screen"
 
         const val TEXT_SIZE_SMALL = 0
         const val TEXT_SIZE_MEDIUM = 1
@@ -146,6 +149,14 @@ class AppSettings(context: Context) {
     private val _themeMode = MutableStateFlow(prefs.getInt(KEY_THEME_MODE, THEME_DARK))
     val themeMode: StateFlow<Int> = _themeMode
 
+    private val _launchBottomScreen = MutableStateFlow(prefs.getBoolean(KEY_LAUNCH_BOTTOM_SCREEN, false))
+    val launchBottomScreen: StateFlow<Boolean> = _launchBottomScreen
+
+    private val _lockAppToBottomScreen = MutableStateFlow(
+        prefs.getBoolean(KEY_LOCK_APP_TO_BOTTOM_SCREEN, prefs.getBoolean(LEGACY_KEY_ENFORCE_BOTTOM_SCREEN, false))
+    )
+    val lockAppToBottomScreen: StateFlow<Boolean> = _lockAppToBottomScreen
+
     fun setCropRegion(left: Float, top: Float, right: Float, bottom: Float) {
         // NASA Rule 5: precondition assertions
         require(left in 0f..1f && top in 0f..1f && right in 0f..1f && bottom in 0f..1f) { "Crop values must be in [0,1]" }
@@ -220,5 +231,18 @@ class AppSettings(context: Context) {
         require(mode in THEME_DARK..THEME_AUTO) { "Invalid theme mode: $mode" }
         _themeMode.value = mode
         prefs.edit().putInt(KEY_THEME_MODE, mode).apply()
+    }
+
+    fun setLaunchBottomScreen(enabled: Boolean) {
+        _launchBottomScreen.value = enabled
+        prefs.edit().putBoolean(KEY_LAUNCH_BOTTOM_SCREEN, enabled).apply()
+    }
+
+    fun setLockAppToBottomScreen(enabled: Boolean) {
+        _lockAppToBottomScreen.value = enabled
+        prefs.edit()
+            .putBoolean(KEY_LOCK_APP_TO_BOTTOM_SCREEN, enabled)
+            .remove(LEGACY_KEY_ENFORCE_BOTTOM_SCREEN)
+            .apply()
     }
 }
