@@ -7,7 +7,7 @@ Android app for translating and understanding foreign-language game screens in r
 - Translate mode: captures the top screen and translates visible text.
 - JP Dictionary mode: OCR + tokenization + JMDict lookup for offline Japanese breakdown.
 - Custom capture region: crop to a dialogue box or UI panel for cleaner results.
-- Bottom-screen behavior controls for Thor: launch on bottom and enforce bottom-screen placement.
+- Bottom-screen behavior controls for Thor: launch on bottom and keep app pinned to the bottom screen.
 
 ## Translation Engines
 
