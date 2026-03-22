@@ -25,6 +25,8 @@ fun CaptureButton(
     modifier: Modifier = Modifier,
     isAutoMode: Boolean = false,
     onStopAuto: () -> Unit = {},
+    idleLabel: String = "Translate",
+    processingLabel: String = "Analyzing...",
 ) {
     if (isAutoMode) {
         Button(
@@ -75,10 +77,10 @@ fun CaptureButton(
                     modifier = Modifier.height(24.dp).width(24.dp),
                 )
                 Spacer(modifier = Modifier.width(12.dp))
-                Text("Analyzing...", fontSize = 18.sp)
+                Text(processingLabel, fontSize = 18.sp)
             } else {
                 Text(
-                    text = "Translate",
+                    text = idleLabel,
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Bold,
                 )

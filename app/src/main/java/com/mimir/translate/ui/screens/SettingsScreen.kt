@@ -26,6 +26,8 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -38,6 +40,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -60,6 +63,8 @@ fun SettingsScreen(
     val ollamaModel by settings.ollamaModel.collectAsState()
     val autoModeRefresh by settings.autoModeRefresh.collectAsState()
     val themeMode by settings.themeMode.collectAsState()
+    val launchBottomScreen by settings.launchBottomScreen.collectAsState()
+    val lockAppToBottomScreen by settings.lockAppToBottomScreen.collectAsState()
 
     var ollamaUrlInput by remember { mutableStateOf(ollamaUrl) }
     val scope = rememberCoroutineScope()
@@ -84,6 +89,8 @@ fun SettingsScreen(
             TextSizeSection(textSize, settings)
             HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant)
             ThemeModeSection(themeMode, settings)
+            HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant)
+            BottomScreenSection(launchBottomScreen, lockAppToBottomScreen, settings)
             HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant)
             TranslationEngineSection(aiModel, settings)
             if (aiModel == AppSettings.MODEL_MLKIT_OFFLINE_AUTO) {
@@ -163,6 +170,63 @@ private fun ThemeModeSection(themeMode: Int, settings: AppSettings) {
                     )
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun BottomScreenSection(launchBottomScreen: Boolean, lockAppToBottomScreen: Boolean, settings: AppSettings) {
+    SettingsSection(title = "Display") {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    "Keep app on bottom screen",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Text(
+                    "Always moves Mimir back to the Thor's lower display if it gets moved.",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Switch(
+                checked = lockAppToBottomScreen,
+                onCheckedChange = { settings.setLockAppToBottomScreen(it) },
+                colors = SwitchDefaults.colors(checkedTrackColor = MaterialTheme.colorScheme.primary),
+            )
+        }
+        Spacer(modifier = Modifier.height(10.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    "Launch on bottom screen",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = if (lockAppToBottomScreen) MaterialTheme.colorScheme.onSurfaceVariant
+                            else MaterialTheme.colorScheme.onSurface,
+                )
+                Text(
+                    "Opens Mimir on the Thor's lower display at startup",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Switch(
+                checked = launchBottomScreen || lockAppToBottomScreen,
+                onCheckedChange = { settings.setLaunchBottomScreen(it) },
+                enabled = !lockAppToBottomScreen,
+                colors = SwitchDefaults.colors(checkedTrackColor = MaterialTheme.colorScheme.primary),
+            )
         }
     }
 }
@@ -324,9 +388,44 @@ private fun OllamaServerSection(
     modelLoadError: String?,
     onBrowseModels: () -> Unit,
 ) {
+    val clipboardManager = LocalClipboardManager.current
+    val clipboardText = (clipboardManager.getText()?.text ?: "").trim()
+    val canPasteUrl = clipboardText.startsWith("http://") || clipboardText.startsWith("https://")
+
     SettingsSection(title = "Ollama Server") {
         Text("Enter the URL of your Ollama server", fontSize = 12.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 4.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                text = "Paste URL",
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                color = if (canPasteUrl) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(if (canPasteUrl) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant)
+                    .clickable(enabled = canPasteUrl) {
+                        onUrlChange(clipboardText.removeSuffix("/"))
+                    }
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+            )
+            if (ollamaUrlInput.isNotBlank()) {
+                Text(
+                    text = "Clear",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                        .clickable { onUrlChange("") }
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                )
+            }
+        }
         OutlinedTextField(
             value = ollamaUrlInput, onValueChange = onUrlChange,
             placeholder = { Text("http://192.168.1.100:11434") }, singleLine = true,
