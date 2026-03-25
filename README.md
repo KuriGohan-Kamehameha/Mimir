@@ -1,6 +1,6 @@
 # Mimir
 
-Android app for translating and understanding foreign-language game screens in real time. It is designed for dual-screen devices such as the [Ayn Thor](https://www.ayntec.com/), where the game runs on the top screen and Mimir runs on the bottom.
+Android app for translating and understanding Japanese content in real time. It is designed for dual-screen devices such as the [AYN Thor](https://www.ayntec.com/), where the game runs on the top screen and Mimir runs on the bottom.
 
 ## Features
 
