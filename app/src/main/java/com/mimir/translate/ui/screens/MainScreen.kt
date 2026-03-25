@@ -6,8 +6,16 @@ import android.graphics.Bitmap
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,6 +24,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
@@ -31,6 +40,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -40,15 +50,25 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.geometry.Offset
 import androidx.core.content.ContextCompat
+import com.mimir.translate.R
 import com.mimir.translate.analysis.DictionaryLookup
 import com.mimir.translate.analysis.JapaneseTokenizer
 import com.mimir.translate.capture.ScreenCaptureManager
@@ -75,6 +95,8 @@ import java.util.Locale
 private const val MAX_AUTO_CYCLES = 10_000
 private val LAST_UPDATED_TIME_FORMATTER: DateTimeFormatter =
     DateTimeFormatter.ofPattern("HH:mm:ss", Locale.getDefault())
+private const val APP_TITLE = "MIMIR"
+private const val HEADER_BURST_MS = 2600L
 
 /** NASA Rule 4: extracted text change detection as a top-level pure function. */
 private fun isSignificantChange(oldText: String, newText: String): Boolean {
@@ -168,6 +190,7 @@ fun MainScreen(
     val ollamaUrl by settings.ollamaUrl.collectAsState()
     val ollamaModelName by settings.ollamaModel.collectAsState()
     val autoModeRefreshMs by settings.autoModeRefresh.collectAsState()
+    val omitEnglish by settings.omitEnglish.collectAsState()
 
     val isAutoMode = aiModel == AppSettings.MODEL_MLKIT_OFFLINE_AUTO
     var autoJob by remember { mutableStateOf<Job?>(null) }
@@ -246,6 +269,7 @@ fun MainScreen(
                 outputLanguage = outputLanguage,
                 ollamaUrl = ollamaUrl,
                 ollamaModel = ollamaModelName,
+                omitEnglish = omitEnglish,
                 onDownloading = { onTranslateStateChange(CaptureState.DownloadingModel) },
             )) {
                 is TranslateResult.Success -> onTranslateStateChange(
@@ -278,6 +302,7 @@ fun MainScreen(
             when (val result = translator.translateScreen(
                 bitmap = bitmap, style = AppSettings.TRANSLATE_STYLE_AUTO,
                 model = AppSettings.MODEL_MLKIT_OFFLINE, outputLanguage = outputLanguage,
+                omitEnglish = omitEnglish,
                 onDownloading = { onTranslateStateChange(CaptureState.DownloadingModel) },
             )) {
                 is TranslateResult.Success -> onTranslateStateChange(
@@ -304,6 +329,8 @@ fun MainScreen(
         }
     }
 
+    var compactMode by remember { mutableStateOf(false) }
+    var headerBurstTick by remember { mutableStateOf(0) }
     var pendingAutoAfterPermission by remember { mutableStateOf(false) }
     var pendingCropAfterPermission by remember { mutableStateOf(false) }
 
@@ -342,52 +369,93 @@ fun MainScreen(
 
     Scaffold(
         topBar = {
-            MimirTopBar(
-                cropEnabled = cropEnabled, aiModel = aiModel,
-                ollamaModelName = ollamaModelName, settings = settings,
-                captureManager = captureManager, projectionLauncher = projectionLauncher,
-                onCropRegionClick = ::onCropRegionClick,
-                onHelpClick = onHelpClick, onSettingsClick = onSettingsClick,
-                onStopAutoMode = ::stopAutoMode, onStartAutoMode = ::startAutoMode,
-                onSetPendingAuto = { pendingAutoAfterPermission = it },
-            )
+            if (!compactMode) {
+                MimirTopBar(
+                    cropEnabled = cropEnabled, aiModel = aiModel,
+                    ollamaModelName = ollamaModelName, settings = settings,
+                    captureManager = captureManager, projectionLauncher = projectionLauncher,
+                    headerBurstTick = headerBurstTick,
+                    onCropRegionClick = ::onCropRegionClick,
+                    onHelpClick = onHelpClick, onSettingsClick = onSettingsClick,
+                    onStopAutoMode = ::stopAutoMode, onStartAutoMode = ::startAutoMode,
+                    onSetPendingAuto = { pendingAutoAfterPermission = it },
+                    onLogoTap = {
+                        compactMode = true
+                        headerBurstTick++
+                    },
+                )
+            }
         },
         containerColor = MaterialTheme.colorScheme.background,
     ) { padding ->
         val buttonIdleLabel = if (appMode == AppSettings.MODE_TRANSLATE) "Translate" else "Analyze"
         val buttonBusyLabel = if (appMode == AppSettings.MODE_TRANSLATE) "Translating..." else "Analyzing..."
-        Column(
-            modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp),
-            verticalArrangement = Arrangement.SpaceBetween,
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding),
         ) {
-            ModeToggle(currentMode = appMode, onModeChange = { settings.setAppMode(it) })
-            ActiveStatusStrip(
-                appMode = appMode,
-                aiModel = aiModel,
-                outputLanguage = outputLanguage,
-                lastSuccessAtMs = lastSuccessAtMs,
-            )
-            CaptureStateContent(
-                captureState = captureState, appMode = appMode, aiModel = aiModel,
-                outputLanguage = outputLanguage, textSize = textSize,
-                modifier = Modifier.weight(1f).padding(top = 4.dp),
-            )
-            CaptureButton(
-                isProcessing = captureState is CaptureState.Capturing
-                    || captureState is CaptureState.DownloadingModel
-                    || captureState is CaptureState.Processing,
-                onClick = { onCaptureClick() },
-                modifier = Modifier.padding(bottom = 16.dp),
-                isAutoMode = isAutoMode,
-                onStopAuto = { stopAutoMode() },
-                idleLabel = buttonIdleLabel,
-                processingLabel = buttonBusyLabel,
-            )
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                if (!compactMode) {
+                    ModeToggle(currentMode = appMode, onModeChange = { settings.setAppMode(it) })
+                    ActiveStatusStrip(
+                        appMode = appMode,
+                        aiModel = aiModel,
+                        outputLanguage = outputLanguage,
+                        lastSuccessAtMs = lastSuccessAtMs,
+                    )
+                }
+                CaptureStateContent(
+                    captureState = captureState, appMode = appMode, aiModel = aiModel,
+                    outputLanguage = outputLanguage, textSize = textSize,
+                    modifier = Modifier.weight(1f),
+                )
+                CaptureButton(
+                    isProcessing = captureState is CaptureState.Capturing
+                        || captureState is CaptureState.DownloadingModel
+                        || captureState is CaptureState.Processing,
+                    onClick = { onCaptureClick() },
+                    modifier = Modifier
+                        .padding(bottom = 8.dp)
+                        .graphicsLayer { alpha = if (compactMode) 0.2f else 1f },
+                    isAutoMode = isAutoMode,
+                    onStopAuto = { stopAutoMode() },
+                    idleLabel = buttonIdleLabel,
+                    processingLabel = buttonBusyLabel,
+                )
+            }
+            if (compactMode) {
+                CompactModeToggle(
+                    onToggle = {
+                        compactMode = false
+                        headerBurstTick++
+                    },
+                    modifier = Modifier.align(Alignment.TopStart).padding(start = 8.dp, top = 8.dp),
+                )
+            }
         }
     }
 }
 
 // --- Extracted composables (NASA Rule 4: each <=60 lines) ---
+
+@Composable
+private fun CompactModeToggle(onToggle: () -> Unit, modifier: Modifier = Modifier) {
+    Image(
+        painter = painterResource(id = R.drawable.mimir_logo),
+        contentDescription = "Toggle compact mode",
+        modifier = modifier
+            .size(34.dp)
+            .clip(CircleShape)
+            .clickable { onToggle() }
+            .graphicsLayer { alpha = 0.2f },
+    )
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -398,15 +466,17 @@ private fun MimirTopBar(
     settings: AppSettings,
     captureManager: ScreenCaptureManager,
     projectionLauncher: androidx.activity.result.ActivityResultLauncher<Intent>,
+    headerBurstTick: Int,
     onCropRegionClick: () -> Unit,
     onHelpClick: () -> Unit,
     onSettingsClick: () -> Unit,
     onStopAutoMode: () -> Unit,
     onStartAutoMode: () -> Unit,
     onSetPendingAuto: (Boolean) -> Unit,
+    onLogoTap: () -> Unit,
 ) {
     TopAppBar(
-        title = { Text(text = "Mimir", fontWeight = FontWeight.Bold) },
+        title = { AnimatedMimirTitle(headerBurstTick = headerBurstTick, onLogoTap = onLogoTap) },
         actions = {
             CropButton(cropEnabled, onCropRegionClick, { settings.clearCropRegion() })
             Spacer(modifier = Modifier.padding(horizontal = 4.dp))
@@ -429,6 +499,125 @@ private fun MimirTopBar(
 }
 
 @Composable
+private fun AnimatedMimirTitle(headerBurstTick: Int, onLogoTap: () -> Unit) {
+    var burstActive by remember { mutableStateOf(true) }
+    LaunchedEffect(headerBurstTick) {
+        burstActive = true
+        delay(HEADER_BURST_MS)
+        burstActive = false
+    }
+    val burstBlend by animateFloatAsState(
+        targetValue = if (burstActive) 1f else 0f,
+        animationSpec = tween(durationMillis = 600),
+        label = "header_burst_blend",
+    )
+
+    val transition = rememberInfiniteTransition(label = "mimir_header")
+    val phase by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 3200, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart,
+        ),
+        label = "header_phase",
+    )
+    val bob by transition.animateFloat(
+        initialValue = -2f,
+        targetValue = 2f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 900, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "header_bob",
+    )
+    val pulse by transition.animateFloat(
+        initialValue = 0.94f,
+        targetValue = 1.08f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1200, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "header_pulse",
+    )
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Image(
+            painter = painterResource(id = R.drawable.mimir_logo),
+            contentDescription = "Mimir logo",
+            modifier = Modifier
+                .size(28.dp)
+                .clip(CircleShape)
+                .clickable { onLogoTap() }
+                .graphicsLayer {
+                    val wave = kotlin.math.sin((phase * 2f * Math.PI).toFloat())
+                    rotationZ = wave * 14f * burstBlend
+                    translationY = bob * burstBlend
+                    scaleX = 1f + ((pulse - 1f) * burstBlend)
+                    scaleY = 1f + ((pulse - 1f) * burstBlend)
+                },
+        )
+        Spacer(modifier = Modifier.width(8.dp))
+        Box {
+            Text(
+                text = watercolorTitleText(),
+                style = MaterialTheme.typography.titleLarge.copy(
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    letterSpacing = 0.08.sp,
+                    shadow = Shadow(
+                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.3f),
+                        offset = Offset(0f, 0f),
+                        blurRadius = 12f,
+                    ),
+                ),
+                modifier = Modifier.graphicsLayer { alpha = 1f - burstBlend },
+            )
+            Text(
+                text = goldShimmerTitleText(phase),
+                style = MaterialTheme.typography.titleLarge.copy(
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    letterSpacing = 0.08.sp,
+                    shadow = Shadow(
+                        color = Color(0xFFF4C86B).copy(alpha = 0.4f),
+                        offset = Offset(0f, 0f),
+                        blurRadius = 14f,
+                    ),
+                ),
+                modifier = Modifier.graphicsLayer { alpha = burstBlend },
+            )
+        }
+    }
+}
+
+private fun watercolorTitleText(): AnnotatedString = buildAnnotatedString {
+    val maxIndex = (APP_TITLE.length - 1).coerceAtLeast(1)
+    APP_TITLE.forEachIndexed { index, char ->
+        val t = index.toFloat() / maxIndex.toFloat()
+        val hue = 248f + (32f * t)
+        val sat = 0.28f + (0.08f * kotlin.math.sin(t * Math.PI).toFloat())
+        val value = 0.92f
+        withStyle(style = SpanStyle(color = Color.hsv(hue, sat, value))) {
+            append(char)
+        }
+    }
+}
+
+private fun goldShimmerTitleText(phase: Float): AnnotatedString = buildAnnotatedString {
+    val maxIndex = (APP_TITLE.length - 1).coerceAtLeast(1)
+    APP_TITLE.forEachIndexed { index, char ->
+        val t = ((index.toFloat() / maxIndex.toFloat()) + phase) % 1f
+        val wave = ((kotlin.math.sin(t * 2f * Math.PI).toFloat()) + 1f) / 2f
+        val hue = 38f + (11f * wave)
+        val sat = 0.55f + (0.18f * wave)
+        val value = 0.86f + (0.14f * wave)
+        withStyle(style = SpanStyle(color = Color.hsv(hue, sat, value))) {
+            append(char)
+        }
+    }
+}
+
+@Composable
 private fun CropButton(cropEnabled: Boolean, onClick: () -> Unit, onClear: () -> Unit) {
     if (!cropEnabled) {
         // Simple "Full" button when no region is set
@@ -439,7 +628,7 @@ private fun CropButton(cropEnabled: Boolean, onClick: () -> Unit, onClear: () ->
             modifier = Modifier.clip(RoundedCornerShape(6.dp))
                 .background(MaterialTheme.colorScheme.surfaceVariant)
                 .clickable { onClick() }
-                .padding(horizontal = 12.dp, vertical = 8.dp),
+                .padding(horizontal = 10.dp, vertical = 6.dp),
         )
     } else {
         // When region is set: show "Region" | "Clear" buttons side-by-side
@@ -453,7 +642,7 @@ private fun CropButton(cropEnabled: Boolean, onClick: () -> Unit, onClear: () ->
                 fontSize = 12.sp, fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.clickable { onClick() }
-                    .padding(horizontal = 10.dp, vertical = 8.dp),
+                    .padding(horizontal = 8.dp, vertical = 6.dp),
             )
             // Divider
             Box(
@@ -467,7 +656,7 @@ private fun CropButton(cropEnabled: Boolean, onClick: () -> Unit, onClear: () ->
                 text = "Clear", fontSize = 11.sp, fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.error,
                 modifier = Modifier.clickable { onClear() }
-                    .padding(horizontal = 10.dp, vertical = 8.dp),
+                    .padding(horizontal = 8.dp, vertical = 6.dp),
             )
         }
     }
@@ -499,7 +688,7 @@ private fun ModelSelector(
             modifier = Modifier.clip(RoundedCornerShape(6.dp))
                 .background(MaterialTheme.colorScheme.surfaceVariant)
                 .clickable { expanded = true }
-                .padding(horizontal = 10.dp, vertical = 6.dp),
+                .padding(horizontal = 8.dp, vertical = 5.dp),
         )
         ModelDropdownMenu(
             expanded, { expanded = false }, ollamaModelName, settings,
@@ -552,12 +741,9 @@ private fun CaptureStateContent(
     textSize: Int,
     modifier: Modifier = Modifier,
 ) {
-    Box(modifier = modifier.verticalScroll(rememberScrollState()), contentAlignment = Alignment.Center) {
+    Box(modifier = modifier.verticalScroll(rememberScrollState()), contentAlignment = Alignment.TopCenter) {
         when (val state = captureState) {
-            is CaptureState.Idle -> StatusText(
-                if (appMode == AppSettings.MODE_TRANSLATE) "Press the button to capture\nand translate the screen"
-                else "Press the button to capture\nand look up words"
-            )
+            is CaptureState.Idle -> {}
             is CaptureState.Capturing -> StatusText("Capturing...")
             is CaptureState.DownloadingModel -> StatusText(
                 "Downloading ${AppSettings.languageDisplayName(outputLanguage)} model..."
@@ -614,7 +800,7 @@ private fun ActiveStatusStrip(
     }
 
     Row(
-        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+        modifier = Modifier.fillMaxWidth().padding(top = 2.dp),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -636,12 +822,12 @@ private fun ActiveStatusStrip(
 private fun StatusPill(label: String) {
     Text(
         text = label,
-        fontSize = 11.sp,
+        fontSize = 10.sp,
         fontWeight = FontWeight.Medium,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.clip(RoundedCornerShape(999.dp))
             .background(MaterialTheme.colorScheme.surfaceVariant)
-            .padding(horizontal = 10.dp, vertical = 5.dp),
+            .padding(horizontal = 8.dp, vertical = 3.dp),
     )
 }
 
@@ -733,9 +919,9 @@ private fun ModeOption(label: String, selected: Boolean, onClick: () -> Unit, mo
     val textColor = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
     Box(
         modifier = modifier.clip(RoundedCornerShape(12.dp)).background(bgColor)
-            .clickable { onClick() }.padding(vertical = 12.dp),
+            .clickable { onClick() }.padding(vertical = 8.dp),
         contentAlignment = Alignment.Center,
     ) {
-        Text(label, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = textColor)
+        Text(label, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = textColor)
     }
 }

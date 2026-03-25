@@ -34,6 +34,15 @@ class ScreenTranslator(
     private val googleTranslator = GoogleTranslator()
     private val translationCache = LruCache<String, TranslateResult>(50)
 
+    /** Returns true if the text block is predominantly English/Latin characters. */
+    fun isPredominantlyEnglish(text: String): Boolean {
+        if (text.isBlank()) return false
+        val letters = text.filter { it.isLetter() }
+        if (letters.isEmpty()) return false
+        val latinCount = letters.count { it.code < 0x0250 } // Basic Latin + Latin Extended
+        return latinCount.toFloat() / letters.length > 0.8f
+    }
+
     // Synchronization lock for thread-safe translator lifecycle
     private val translatorLock = Any()
     
@@ -90,6 +99,7 @@ class ScreenTranslator(
         outputLanguage: String = AppSettings.LANG_ENGLISH,
         ollamaUrl: String = "",
         ollamaModel: String = "",
+        omitEnglish: Boolean = false,
         onDownloading: (() -> Unit)? = null,
     ): TranslateResult {
         // NASA Rule 5: precondition assertions
@@ -99,16 +109,16 @@ class ScreenTranslator(
             try {
                 when (model) {
                     AppSettings.MODEL_MLKIT_OFFLINE ->
-                        translateOffline(bitmap, outputLanguage, onDownloading)
+                        translateOffline(bitmap, outputLanguage, omitEnglish, onDownloading)
 
                     AppSettings.MODEL_GOOGLE_FREE ->
-                        translateWithGoogle(bitmap, outputLanguage)
+                        translateWithGoogle(bitmap, outputLanguage, omitEnglish)
 
                     AppSettings.MODEL_OLLAMA ->
                         translateWithOllama(bitmap, style, outputLanguage, ollamaUrl, ollamaModel)
 
                     else ->
-                        translateOffline(bitmap, outputLanguage, onDownloading)
+                        translateOffline(bitmap, outputLanguage, omitEnglish, onDownloading)
                 }
             } catch (e: UnknownHostException) {
                 TranslateResult.Error("No internet connection")
@@ -123,13 +133,19 @@ class ScreenTranslator(
     private suspend fun translateOffline(
         bitmap: Bitmap,
         outputLanguage: String = AppSettings.LANG_ENGLISH,
+        omitEnglish: Boolean = false,
         onDownloading: (() -> Unit)? = null,
     ): TranslateResult {
-        val blocks = textRecognizer.recognizeTextBlocks(bitmap)
+        val allBlocks = textRecognizer.recognizeTextBlocks(bitmap)
             ?: return TranslateResult.Error("No text found in screenshot")
 
-        if (blocks.isEmpty()) {
+        if (allBlocks.isEmpty()) {
             return TranslateResult.Error("No text found in screenshot")
+        }
+
+        val blocks = if (omitEnglish) allBlocks.filter { !isPredominantlyEnglish(it) } else allBlocks
+        if (blocks.isEmpty()) {
+            return TranslateResult.Error("All text appears to be in English already")
         }
 
         // Check if download is needed (under lock)
@@ -173,12 +189,17 @@ class ScreenTranslator(
     private suspend fun translateWithGoogle(
         bitmap: Bitmap,
         outputLanguage: String,
+        omitEnglish: Boolean = false,
     ): TranslateResult {
         val text = textRecognizer.recognizeText(bitmap)
             ?: return TranslateResult.Error("No text found in screenshot")
 
         if (text.isBlank()) {
             return TranslateResult.Error("No text found in screenshot")
+        }
+
+        if (omitEnglish && isPredominantlyEnglish(text)) {
+            return TranslateResult.Error("All text appears to be in English already")
         }
 
         val cacheKey = "google:$outputLanguage:$text"

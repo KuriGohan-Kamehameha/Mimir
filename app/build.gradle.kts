@@ -12,8 +12,8 @@ android {
         applicationId = "com.mimir.translate"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2
-        versionName = "0.0.2-alpha"
+        versionCode = 5
+        versionName = "0.0.5-beta"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

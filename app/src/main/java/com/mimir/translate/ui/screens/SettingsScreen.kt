@@ -65,6 +65,7 @@ fun SettingsScreen(
     val themeMode by settings.themeMode.collectAsState()
     val launchBottomScreen by settings.launchBottomScreen.collectAsState()
     val lockAppToBottomScreen by settings.lockAppToBottomScreen.collectAsState()
+    val omitEnglish by settings.omitEnglish.collectAsState()
 
     var ollamaUrlInput by remember { mutableStateOf(ollamaUrl) }
     val scope = rememberCoroutineScope()
@@ -99,6 +100,8 @@ fun SettingsScreen(
             }
             HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant)
             OutputLanguageSection(outputLanguage, aiModel, settings)
+            HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant)
+            OmitEnglishSection(omitEnglish, settings)
             if (aiModel == AppSettings.MODEL_OLLAMA) {
                 HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant)
                 TranslationStyleSection(translateStyle, settings)
@@ -358,6 +361,36 @@ private fun OutputLanguageSection(outputLanguage: String, aiModel: Int, settings
                 "First use will download the ${AppSettings.languageDisplayName(outputLanguage)} model (~30MB)",
                 fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 4.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun OmitEnglishSection(omitEnglish: Boolean, settings: AppSettings) {
+    SettingsSection(title = "Omit English") {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    "Skip English text blocks",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Text(
+                    "Filters out text that's already in English (e.g. menu options like Save/Load)",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Switch(
+                checked = omitEnglish,
+                onCheckedChange = { settings.setOmitEnglish(it) },
+                colors = SwitchDefaults.colors(checkedTrackColor = MaterialTheme.colorScheme.primary),
             )
         }
     }
