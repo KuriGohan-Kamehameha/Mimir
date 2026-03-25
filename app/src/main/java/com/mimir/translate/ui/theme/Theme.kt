@@ -19,6 +19,22 @@ private val DarkColorScheme = darkColorScheme(
     onSurfaceVariant = Color(0xFFB0B0B0),
 )
 
+private val PurpleOledColorScheme = darkColorScheme(
+    primary = Color(0xFF9333EA),           // Deep violet
+    onPrimary = Color.White,
+    secondary = Color(0xFF7C3AED),         // Deeper violet
+    onSecondary = Color.White,
+    tertiary = Color(0xFFC084FC),          // Lighter purple accent
+    onTertiary = Color(0xFF1A0830),
+    background = Color(0xFF000000),        // True OLED black
+    onBackground = Color(0xFFF3E8FF),      // Warm purple-white text
+    surface = Color(0xFF000000),           // True OLED black
+    onSurface = Color(0xFFF3E8FF),
+    surfaceVariant = Color(0xFF1A0830),    // Very dark purple card bg
+    onSurfaceVariant = Color(0xFFD8B4FE),  // Soft lavender on dark cards
+    error = Color(0xFFCF6679),
+)
+
 private val LightColorScheme = lightColorScheme(
     primary = Color(0xFFC2185B),
     onPrimary = Color.White,
@@ -33,14 +49,15 @@ private val LightColorScheme = lightColorScheme(
 
 @Composable
 fun MimirTheme(themeMode: Int, content: @Composable () -> Unit) {
-    val useDarkTheme = when (themeMode) {
-        0 -> true
-        1 -> false
-        else -> isSystemInDarkTheme()
+    val colorScheme = when (themeMode) {
+        0 -> DarkColorScheme
+        1 -> LightColorScheme
+        3 -> PurpleOledColorScheme
+        else -> if (isSystemInDarkTheme()) DarkColorScheme else LightColorScheme
     }
 
     MaterialTheme(
-        colorScheme = if (useDarkTheme) DarkColorScheme else LightColorScheme,
+        colorScheme = colorScheme,
         content = content,
     )
 }

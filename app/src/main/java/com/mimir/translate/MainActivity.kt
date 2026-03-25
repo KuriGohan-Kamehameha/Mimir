@@ -4,6 +4,7 @@ import android.app.ActivityOptions
 import android.graphics.Bitmap
 import android.hardware.display.DisplayManager
 import android.os.Bundle
+import android.view.Display
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -40,30 +41,60 @@ class MainActivity : ComponentActivity() {
     lateinit var settings: AppSettings
     lateinit var translator: ScreenTranslator
 
+    private fun currentDisplayId(): Int {
+        return if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+            display?.displayId ?: Display.DEFAULT_DISPLAY
+        } else {
+            @Suppress("DEPRECATION")
+            windowManager.defaultDisplay.displayId
+        }
+    }
+
+    private fun resolveBottomDisplayId(displayManager: DisplayManager, currentDisplayId: Int): Int? {
+        val candidates = displayManager.displays
+            .asSequence()
+            .filter { it.displayId != Display.DEFAULT_DISPLAY }
+            .filter { it.state == Display.STATE_ON }
+            .sortedBy { it.displayId }
+            .toList()
+
+        val preferred = candidates.firstOrNull { (it.flags and Display.FLAG_PRESENTATION) != 0 }
+            ?: candidates.firstOrNull()
+            ?: return null
+
+        return if (preferred.displayId == currentDisplayId) null else preferred.displayId
+    }
+
+    private fun relocateToBottomDisplayIfNeeded(shouldRelocate: Boolean, checkIntentGuard: Boolean): Boolean {
+        if (!shouldRelocate) {
+            return false
+        }
+        if (checkIntentGuard && intent.getBooleanExtra(EXTRA_DISPLAY_RELOCATED, false)) {
+            return false
+        }
+
+        val displayManager = getSystemService(DISPLAY_SERVICE) as DisplayManager
+        val targetDisplayId = resolveBottomDisplayId(displayManager, currentDisplayId()) ?: return false
+        val options = ActivityOptions.makeBasic()
+        options.launchDisplayId = targetDisplayId
+        val relaunch = android.content.Intent(this, MainActivity::class.java).apply {
+            putExtra(EXTRA_DISPLAY_RELOCATED, true)
+            addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_CLEAR_TASK)
+        }
+        startActivity(relaunch, options.toBundle())
+        finish()
+        return true
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         settings = AppSettings(this)
-        if ((settings.launchBottomScreen.value || settings.lockAppToBottomScreen.value) && !intent.getBooleanExtra(EXTRA_DISPLAY_RELOCATED, false)) {
-            val displayManager = getSystemService(DISPLAY_SERVICE) as DisplayManager
-            val displays = displayManager.displays
-            val currentDisplayId = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
-                display?.displayId ?: 0
-            } else {
-                @Suppress("DEPRECATION")
-                windowManager.defaultDisplay.displayId
-            }
-            val bottomDisplay = displays.firstOrNull { it.displayId == 1 }
-            if (bottomDisplay != null && currentDisplayId != 1) {
-                val options = ActivityOptions.makeBasic()
-                options.launchDisplayId = 1
-                val relaunch = android.content.Intent(this, MainActivity::class.java).apply {
-                    putExtra(EXTRA_DISPLAY_RELOCATED, true)
-                    addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_CLEAR_TASK)
-                }
-                startActivity(relaunch, options.toBundle())
-                finish()
-                return
-            }
+        if (relocateToBottomDisplayIfNeeded(
+                shouldRelocate = settings.launchBottomScreen.value || settings.lockAppToBottomScreen.value,
+                checkIntentGuard = true,
+            )
+        ) {
+            return
         }
         captureManager = ScreenCaptureManager(this)
         textRecognizer = TextRecognizer()
@@ -126,32 +157,24 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        if (settings.lockAppToBottomScreen.value) {
-            val displayManager = getSystemService(DISPLAY_SERVICE) as DisplayManager
-            val displays = displayManager.displays
-            val currentDisplayId = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
-                display?.displayId ?: 0
-            } else {
-                @Suppress("DEPRECATION")
-                windowManager.defaultDisplay.displayId
-            }
-            val bottomDisplay = displays.firstOrNull { it.displayId == 1 }
-            if (bottomDisplay != null && currentDisplayId != 1) {
-                val options = ActivityOptions.makeBasic()
-                options.launchDisplayId = 1
-                val relaunch = android.content.Intent(this, MainActivity::class.java).apply {
-                    putExtra(EXTRA_DISPLAY_RELOCATED, true)
-                    addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_CLEAR_TASK)
-                }
-                startActivity(relaunch, options.toBundle())
-                finish()
-            }
-        }
+        relocateToBottomDisplayIfNeeded(
+            shouldRelocate = settings.lockAppToBottomScreen.value,
+            checkIntentGuard = false,
+        )
+    }
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        captureManager.release()
-        textRecognizer.close()
+        if (::captureManager.isInitialized) {
+            captureManager.release()
+        }
+        if (::textRecognizer.isInitialized) {
+            textRecognizer.close()
+        }
     }
 }

@@ -33,25 +33,25 @@ fun CaptureButton(
             onClick = onStopAuto,
             modifier = modifier
                 .fillMaxWidth()
-                .height(64.dp),
+                .height(52.dp),
             shape = RoundedCornerShape(16.dp),
             colors = ButtonDefaults.buttonColors(
                 containerColor = MaterialTheme.colorScheme.error,
             ),
-            contentPadding = PaddingValues(horizontal = 24.dp),
+            contentPadding = PaddingValues(horizontal = 20.dp),
         ) {
             if (isProcessing) {
                 CircularProgressIndicator(
                     color = MaterialTheme.colorScheme.onError,
                     strokeWidth = 2.dp,
-                    modifier = Modifier.height(24.dp).width(24.dp),
+                    modifier = Modifier.height(20.dp).width(20.dp),
                 )
-                Spacer(modifier = Modifier.width(12.dp))
-                Text("Auto-translating...", fontSize = 18.sp, color = MaterialTheme.colorScheme.onError)
+                Spacer(modifier = Modifier.width(10.dp))
+                Text("Auto-translating...", fontSize = 15.sp, color = MaterialTheme.colorScheme.onError)
             } else {
                 Text(
                     text = "Stop Auto",
-                    fontSize = 20.sp,
+                    fontSize = 17.sp,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onError,
                 )
@@ -63,25 +63,25 @@ fun CaptureButton(
             enabled = !isProcessing,
             modifier = modifier
                 .fillMaxWidth()
-                .height(64.dp),
+                .height(52.dp),
             shape = RoundedCornerShape(16.dp),
             colors = ButtonDefaults.buttonColors(
                 containerColor = MaterialTheme.colorScheme.primary,
             ),
-            contentPadding = PaddingValues(horizontal = 24.dp),
+            contentPadding = PaddingValues(horizontal = 20.dp),
         ) {
             if (isProcessing) {
                 CircularProgressIndicator(
                     color = MaterialTheme.colorScheme.onPrimary,
                     strokeWidth = 2.dp,
-                    modifier = Modifier.height(24.dp).width(24.dp),
+                    modifier = Modifier.height(20.dp).width(20.dp),
                 )
-                Spacer(modifier = Modifier.width(12.dp))
-                Text(processingLabel, fontSize = 18.sp)
+                Spacer(modifier = Modifier.width(10.dp))
+                Text(processingLabel, fontSize = 15.sp)
             } else {
                 Text(
                     text = idleLabel,
-                    fontSize = 20.sp,
+                    fontSize = 17.sp,
                     fontWeight = FontWeight.Bold,
                 )
             }

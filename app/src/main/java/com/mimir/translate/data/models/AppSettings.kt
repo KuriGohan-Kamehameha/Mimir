@@ -26,6 +26,7 @@ class AppSettings(context: Context) {
         private const val KEY_LAUNCH_BOTTOM_SCREEN = "launch_bottom_screen"
         private const val KEY_LOCK_APP_TO_BOTTOM_SCREEN = "lock_app_to_bottom_screen"
         private const val LEGACY_KEY_ENFORCE_BOTTOM_SCREEN = "enforce_bottom_screen"
+        private const val KEY_OMIT_ENGLISH = "omit_english"
 
         const val TEXT_SIZE_SMALL = 0
         const val TEXT_SIZE_MEDIUM = 1
@@ -51,11 +52,13 @@ class AppSettings(context: Context) {
         const val THEME_DARK = 0
         const val THEME_LIGHT = 1
         const val THEME_AUTO = 2
+        const val THEME_PURPLE_OLED = 3
 
         val THEME_MODES = listOf(
             THEME_DARK to "Dark",
             THEME_LIGHT to "Light",
             THEME_AUTO to "Auto (System)",
+            THEME_PURPLE_OLED to "Purple OLED",
         )
 
         fun themeModeLabel(mode: Int): String =
@@ -157,6 +160,9 @@ class AppSettings(context: Context) {
     )
     val lockAppToBottomScreen: StateFlow<Boolean> = _lockAppToBottomScreen
 
+    private val _omitEnglish = MutableStateFlow(prefs.getBoolean(KEY_OMIT_ENGLISH, false))
+    val omitEnglish: StateFlow<Boolean> = _omitEnglish
+
     fun setCropRegion(left: Float, top: Float, right: Float, bottom: Float) {
         // NASA Rule 5: precondition assertions
         require(left in 0f..1f && top in 0f..1f && right in 0f..1f && bottom in 0f..1f) { "Crop values must be in [0,1]" }
@@ -228,7 +234,7 @@ class AppSettings(context: Context) {
     }
 
     fun setThemeMode(mode: Int) {
-        require(mode in THEME_DARK..THEME_AUTO) { "Invalid theme mode: $mode" }
+        require(THEME_MODES.any { it.first == mode }) { "Invalid theme mode: $mode" }
         _themeMode.value = mode
         prefs.edit().putInt(KEY_THEME_MODE, mode).apply()
     }
@@ -236,6 +242,11 @@ class AppSettings(context: Context) {
     fun setLaunchBottomScreen(enabled: Boolean) {
         _launchBottomScreen.value = enabled
         prefs.edit().putBoolean(KEY_LAUNCH_BOTTOM_SCREEN, enabled).apply()
+    }
+
+    fun setOmitEnglish(enabled: Boolean) {
+        _omitEnglish.value = enabled
+        prefs.edit().putBoolean(KEY_OMIT_ENGLISH, enabled).apply()
     }
 
     fun setLockAppToBottomScreen(enabled: Boolean) {
